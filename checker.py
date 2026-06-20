@@ -11,10 +11,10 @@ import time
 
 CONFIG_DIR = "Config"
 SUB_DIR = "sub"
-TIMEOUT = 5  # Максимальное время ожидания ответа (в секундах)
+TIMEOUT = 5  
 TEST_URL = "http://cp.cloudflare.com/generate_204"
 
-# Напрямую указываем токен и канал, чтобы исключить любые проблемы с переменными
+# Жёстко прописываем токен и канал (переменная окружения больше не забагует)
 BOT_TOKEN = "8624370798:AAGT0Bxx73nINuwYO1rzgjuUvF78cPpvg_k"
 DESTINATION_CHANNEL = "@rjaviiiiii" 
 
@@ -25,7 +25,6 @@ if not os.path.exists(SUB_DIR):
     os.makedirs(SUB_DIR)
 
 def ensure_sing_box():
-    """Проверяет наличие sing-box в системе, либо скачивает его для Linux amd64"""
     global SING_BOX_PATH
     if shutil.which("sing-box"):
         SING_BOX_PATH = "sing-box"
@@ -56,7 +55,6 @@ def ensure_sing_box():
         return False
 
 def load_configs():
-    """Читает сырые конфиги, собранные файлом FetchConfig.py"""
     raw_data = {}
     for proto in PROTOCOLS:
         file_path = os.path.join(CONFIG_DIR, f"{proto}.txt")
@@ -69,12 +67,12 @@ def load_configs():
     return raw_data
 
 def load_raw_proxies():
-    """Читает собранные прокси для Телеграма из файла proxies.txt"""
+    """Читает собранные прокси из файла proxies.txt"""
     file_path = os.path.join(CONFIG_DIR, "proxies.txt")
     if os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as f:
-            # ПОЧИНЕНО: Теперь читает ссылки и с https://t.me/proxy, и с tg://proxy
-            return [line.strip() for line in f if line.strip() and ("proxy?" in line)]
+            # ПОЧИНЕНО: Принимает любые строки, содержащие параметры прокси
+            return [line.strip() for line in f if line.strip() and "proxy?" in line]
     return []
 
 async def test_tg_proxy(proxy_url):
@@ -93,7 +91,7 @@ async def test_tg_proxy(proxy_url):
         writer.close()
         await writer.wait_closed()
         
-        # Приводим к единому формату https кликабельной ссылки для отправки в ТГ
+        # Переводим из внутрисистемного tg:// в кликабельную ссылку https://t.me/
         if proxy_url.startswith("tg://"):
             proxy_url = proxy_url.replace("tg://", "https://t.me/")
         return proxy_url
@@ -101,9 +99,7 @@ async def test_tg_proxy(proxy_url):
         return None
 
 async def test_http_via_sing_box(proto, config_url):
-    """Запускает изолированный sing-box и замеряет скорость HTTP-ответа (пинг в мс)"""
     local_port = random.randint(20000, 40000)
-    
     sb_config = {
         "log": {"level": "panic"},
         "inbounds": [{"type": "socks", "listen": "127.0.0.1", "listen_port": local_port}],
@@ -144,7 +140,7 @@ async def test_http_via_sing_box(proto, config_url):
         sb_config["outbounds"].insert(0, outbound)
         sb_config["route"] = {"rules": [{"outbound": "proxy"}], "final": "proxy"}
     except Exception:
-        return None
+        return None  
         
     config_filename = f"temp_{local_port}.json"
     with open(config_filename, "w") as f:
@@ -155,7 +151,7 @@ async def test_http_via_sing_box(proto, config_url):
         stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
     )
     
-    await asyncio.sleep(0.4)
+    await asyncio.sleep(0.4) 
     
     ping_ms = None
     try:
@@ -181,9 +177,8 @@ async def test_http_via_sing_box(proto, config_url):
     return ping_ms
 
 async def send_to_telegram(text):
-    """Отправляет готовый пост в Telegram-канал"""
     if not BOT_TOKEN:
-        print("⚠️ Токен бота пуст.")
+        print("⚠️ Секрет пуст.")
         return
     import aiohttp
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -197,7 +192,7 @@ async def send_to_telegram(text):
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload) as resp:
                 if resp.status == 200:
-                    print("✅ Пост успешно опубликован в канал!")
+                    print("✅ Сообщение успешно отправлено в канал!")
                 else:
                     print(f"❌ Ошибка Telegram API: {await resp.text()}")
     except Exception as e:
@@ -207,7 +202,7 @@ async def check_all_configs():
     ensure_sing_box()
     raw_configs = load_configs()
     valid_configs = {proto: [] for proto in PROTOCOLS}
-    all_scored_configs = []
+    all_scored_configs = [] 
     
     for proto, configs in raw_configs.items():
         print(f"⏳ HTTP-тест протокола {proto.upper()} ({len(configs)} шт.)...")
@@ -258,14 +253,17 @@ async def main():
     
     sorted_configs = sorted(all_scored_configs, key=lambda x: x["ping"])
     
-    # ПОЧИНЕНО И УПРОЩЕНО: Бот шлет вообще ВСЕ выжившие элементы!
+    # ПОЧИНЕНО: Публикуем абсолютно все живые элементы
     if sorted_configs or working_proxies:
-        print(f"📊 Найдено элементов. Публикуем...")
+        print(f"📊 Элементы найдены. Начинаем публикацию...")
         
+        # 1. Отправка конфигураций V2Ray
         if sorted_configs:
             post_text = "🚀 **parserv2 | LIVE CONFIGURATIONS** 🚀\n\n"
             for idx, item in enumerate(sorted_configs, start=1):
                 chunk = f"📍 **{idx}. [{item['proto'].upper()}]** Ping: `{item['ping']}ms`\n```{item['config']}```\n\n"
+                
+                # Защита от превышения лимита сообщения Telegram (4096 символов)
                 if len(post_text) + len(chunk) > 3900:
                     post_text += f"🆔 {DESTINATION_CHANNEL}"
                     await send_to_telegram(post_text)
@@ -273,10 +271,11 @@ async def main():
                     post_text = "🚀 **parserv2 | LIVE CONFIGURATIONS (Продолжение)** 🚀\n\n"
                 post_text += chunk
                 
-            post_text += f"🆔 {DESTINATION_CHANNEL}\n📂 _Все ключи сохранены в ваших подписках!_"
+            post_text += f"🆔 {DESTINATION_CHANNEL}\n📂 _Все ключи сохранены в файлах ваших подписок!_"
             await send_to_telegram(post_text)
             await asyncio.sleep(3)
 
+        # 2. Отправка MTProto прокси
         if working_proxies:
             proxy_text = "🔗 **Рабочие MTProto прокси для Telegram:**\n\n"
             for p_idx, proxy in enumerate(working_proxies, start=1):
@@ -285,7 +284,7 @@ async def main():
             await send_to_telegram(proxy_text)
             
     else:
-        print("⚠️ Живых элементов не обнаружено.")
+        print("⚠️ Живых конфигураций или прокси не обнаружено.")
 
 if __name__ == "__main__":
     asyncio.run(main())
