@@ -2,58 +2,40 @@ import os, asyncio, aiohttp, re
 from aiohttp_socks import ProxyConnector
 
 CONFIG_DIR = "Config"
-BOT_TOKEN = "8624370798:AAGT0Bxx73nINuwYO1rzgjuUvF78cPpvg_k"
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 DESTINATION_CHANNEL = "@rjaviiiiii"
-# Только HTTP-протоколы
 PROTOCOLS = ["vless", "vmess", "shadowsocks", "trojan", "hysteria2"]
 
-def parse_proxy_params(config):
-    try:
-        # Регулярка для извлечения IP и порта
-        match = re.search(r'@([\d\.]+):(\d+)', config)
-        if match:
-            return match.group(1), int(match.group(2))
-    except: pass
-    return None, None
-
-async def test_key_strict(config):
-    ip, port = parse_proxy_params(config)
-    if not ip or not port: return False
-    
-    try:
-        connector = ProxyConnector.from_url(f"socks5://{ip}:{port}")
-        async with aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=3)) as session:
-            async with session.get("http://www.google.com") as resp:
-                return resp.status == 200
-    except:
-        return False
-
-async def send_to_telegram(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": DESTINATION_CHANNEL, "text": text, "parse_mode": "HTML"}
-    async with aiohttp.ClientSession() as session:
-        await session.post(url, json=payload)
+async def check_http(semaphore, proto, config):
+    async with semaphore:
+        try:
+            match = re.search(r'@([\d\.]+):(\d+)', config)
+            if not match: return None
+            connector = ProxyConnector.from_url(f"socks5://{match.group(1)}:{match.group(2)}")
+            async with aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=2)) as session:
+                async with session.get("http://www.google.com") as resp:
+                    return {"proto": proto, "config": config} if resp.status == 200 else None
+        except: return None
 
 async def main():
-    scored = []
+    semaphore = asyncio.Semaphore(20) # 20 параллельных проверок
+    tasks = []
     for proto in PROTOCOLS:
         path = os.path.join(CONFIG_DIR, f"{proto}.txt")
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
-                configs = list(set([line.strip() for line in f if line.strip()]))
-                for cfg in configs:
-                    if await test_key_strict(cfg):
-                        scored.append({"proto": proto, "config": cfg})
-                    await asyncio.sleep(0.05)
-
-    if scored:
-        for i in range(0, len(scored), 5):
-            chunk = scored[i:i+5]
-            text = "✅ <b>РАБОЧИЕ КЛЮЧИ:</b>\n\n"
-            for item in chunk:
-                text += f"⚡ {item['proto'].upper()}\n<code>{item['config']}</code>\n\n"
-            await send_to_telegram(text)
-            await asyncio.sleep(1)
+                for cfg in set(f.read().splitlines()):
+                    if cfg.strip():
+                        tasks.append(check_http(semaphore, proto, cfg))
+    
+    results = [r for r in await asyncio.gather(*tasks) if r]
+    
+    if results:
+        async with aiohttp.ClientSession() as s:
+            for i in range(0, len(results), 5):
+                text = "✅ <b>РАБОЧИЕ КЛЮЧИ:</b>\n\n" + "\n".join([f"⚡ {r['proto'].upper()}\n<code>{r['config']}</code>" for r in results[i:i+5]])
+                await s.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": DESTINATION_CHANNEL, "text": text, "parse_mode": "HTML"})
+                await asyncio.sleep(0.5)
 
 if __name__ == "__main__":
     asyncio.run(main())
