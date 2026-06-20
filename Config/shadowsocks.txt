@@ -1,1 +1,5 @@
-No configs found.
+ss://b922ed30-a906-472d-a3f9-f895c49ecdb1@45.131.210.31:80?path=%2Fbackup&amp;security=none&amp;encryption=none&amp;host=yWIAQK.SPAmdETECtor.World&amp;type=ws#aminvpn23456
+ss://50a37a92-5d40-48f4-a485-07ffc6c0bbe0@45.12.30.16:80?path=%2Fbackup&amp;security=none&amp;encryption=none&amp;host=YHc8gv.dIVAr.pRo&amp;type=ws#aminiiii87
+ss://23ac55ff-4092-46fe-8334-235d5452d324@45.131.4.245:80?path=%2F&amp;security=none&amp;encryption=none&amp;host=QanBt4.MahDAviAT.Uk&amp;type=ws#aminoooo67
+ss://ewogICJ2IjogIjIiLAogICJwcyI6ICJGcmVlSXJhbi1VSyIsCiAgImFkZCI6ICI4NS4yMzkuNjAuNDkiLAogICJwb3J0IjogMjI1NTcsCiAgImlkIjogIjNhMmYyZDljLTM2MmItNDA2ZS1hYWU3LTIzM2ExN2U5MmY2MSIsCiAgImFpZCI6IDAsCiAgIm5ldCI6ICJ3cyIsCiAgInR5cGUiOiAibm9uZSIsCiAgImhvc3QiOiAiIiwKICAicGF0aCI6ICIvIiwKICAidGxzIjogIm5vbmUiCn0=
+ss://eyJzbmkiOiIiLCJob3N0IjoidjIudmlwc3RvcmUuY2ZkIiwidGxzIjoibm9uZSIsIm5ldCI6IndzIiwiaWQiOiI5OTk3NTMwYy03ODQxLTQ3NDYtYWM4OC05MzUwMzlmMGEzYWMiLCJwcyI6IkFtaW52cG5paWlpIiwiaGVhZGVyVHlwZSI6IiIsInBvcnQiOiIxNDU0MiIsInR5cGUiOiJub25lIiwiYWlkIjoiMCIsImFkZCI6IjE1Ny4yMzAuMjguMTI5IiwiZnAiOiIiLCJ2IjoiMiIsInBhdGgiOiJcLz9lZD0yMDQ4Iiwic2VydmljZU5hbWUiOiJub25lIiwiYWxwbiI6IiJ9
