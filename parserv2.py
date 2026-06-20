@@ -7,77 +7,66 @@ import aiohttp
 CHANNELS_FILE = "telegram_channels.json"
 OUTPUT_DIR = "Config"
 
-CONFIG_PATTERNS = {
-    "vless": r"vless://[^\s\n\"'<]+",
-    "vmess": r"vmess://[^\s\n\"'<]+",
-    "shadowsocks": r"ss://[^\s\n\"'<]+",
-    "trojan": r"trojan://[^\s\n\"'<]+",
-    "hysteria2": r"hy2://[^\s\n\"'<]+",
-    "mtproto": r"tg://proxy\?[^\s\n\"'<]+|https://t\.me/proxy\?[^\s\n\"'<]+"
+PATTERNS = {
+    "vless": r"vless://[^\s\"'<]+",
+    "vmess": r"vmess://[^\s\"'<]+",
+    "shadowsocks": r"ss://[^\s\"'<]+",
+    "trojan": r"trojan://[^\s\"'<]+",
+    "hysteria2": r"hy2://[^\s\"'<]+",
+    "mtproto": r"tg://proxy\?[^\s\"'<]+"
 }
 
-if not os.path.exists(OUTPUT_DIR):
-    os.makedirs(OUTPUT_DIR)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-
-async def fetch_content(session, username):
+async def fetch(session, username):
     url = f"https://t.me/s/{username}"
     try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=7)) as resp:
-            if resp.status == 200:
-                text = await resp.text()
-                new_channels = re.findall(r't\.me/([a-zA-Z0-9_]{5,30})', text)
-                return text, list(set(new_channels))
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=7)) as r:
+            if r.status == 200:
+                text = await r.text()
+                channels = re.findall(r't\.me/([a-zA-Z0-9_]{5,30})', text)
+                return text, list(set(channels))
     except Exception:
         pass
     return "", []
 
-
 async def main():
-    print("🚀 Запуск парсера...")
-    if not os.path.exists(CHANNELS_FILE):
-        print(f"❌ Файл {CHANNELS_FILE} не найден!")
-        return
-
+    print("Start parser")
+    
     with open(CHANNELS_FILE, "r", encoding="utf-8") as f:
-        channels_to_parse = [c.strip().lstrip("@") for c in json.load(f) if c.strip()]
-
-    all_configs = {p: set() for p in CONFIG_PATTERNS}
-    parsed_channels = set()
-
+        channels = [c.strip().lstrip("@") for c in json.load(f) if c.strip()]
+    
+    configs = {p: set() for p in PATTERNS}
+    parsed = set()
+    
     async with aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"}) as session:
-        queue = channels_to_parse
-
+        queue = channels
+        
         for _ in range(2):
             next_queue = []
-            for username in queue:
-                if username in parsed_channels:
+            for ch in queue:
+                if ch in parsed:
                     continue
-
-                print(f"📡 Анализ: @{username}")
-                text, found_refs = await fetch_content(session, username)
-                parsed_channels.add(username)
-
-                for proto, pattern in CONFIG_PATTERNS.items():
+                print(f"Parse: {ch}")
+                text, found = await fetch(session, ch)
+                parsed.add(ch)
+                
+                for proto, pattern in PATTERNS.items():
                     matches = re.findall(pattern, text)
-                    cleaned = [m.replace("&amp;", "&").strip() for m in matches]
-                    all_configs[proto].update(cleaned)
-
-                next_queue.extend(found_refs[:3])
+                    configs[proto].update(m.replace("&amp;", "&") for m in matches)
+                
+                next_queue.extend(found[:3])
                 await asyncio.sleep(0.8)
             queue = next_queue
-
-    total = 0
-    for proto, configs in all_configs.items():
-        if configs:
+    
+    for proto, data in configs.items():
+        if data:
             path = os.path.join(OUTPUT_DIR, f"{proto}.txt")
             with open(path, "w", encoding="utf-8") as f:
-                f.write("\n".join(configs) + "\n")
-            total += len(configs)
-            print(f"💾 Сохранено {len(configs)} {proto}")
-
-    print(f"✅ Сбор завершен. Всего уникальных ключей: {total}")
-
+                f.write("\n".join(data))
+            print(f"Saved {len(data)} {proto}")
+    
+    print("Parser done")
 
 if __name__ == "__main__":
     asyncio.run(main())
