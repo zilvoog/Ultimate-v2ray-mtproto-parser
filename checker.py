@@ -14,7 +14,6 @@ SUB_DIR = "sub"
 TIMEOUT = 5  
 TEST_URL = "http://cp.cloudflare.com/generate_204"
 
-# ПОЧИНЕНО: Токен теперь прописан как прямая строка, а не через os.getenv
 BOT_TOKEN = "8624370798:AAGT0Bxx73nINuwYO1rzgjuUvF78cPpvg_k"
 DESTINATION_CHANNEL = "@rjaviiiiii" 
 
@@ -24,35 +23,51 @@ SING_BOX_PATH = "./sing-box"
 if not os.path.exists(SUB_DIR):
     os.makedirs(SUB_DIR)
 
-def ensure_sing_box():
-    global SING_BOX_PATH
-    if shutil.which("sing-box"):
-        SING_BOX_PATH = "sing-box"
-        return True
-    if os.path.exists("./sing-box"):
-        return True
-        
-    print("📥 Скачивание sing-box для точных HTTP-тестов...")
+def get_flag_by_host(host):
+    """Определяет флаг страны по текстовым маркерам в адресе сервера или имени ключа"""
+    host = host.lower()
+    geo_mapping = {
+        "de": "🇩🇪", "germany": "🇩🇪", "fr": "🇫🇷", "france": "🇫🇷",
+        "nl": "🇳🇱", "netherlands": "🇳🇱", "fi": "🇫🇮", "finland": "🇫🇮",
+        "gb": "🇬🇧", "uk": "🇬🇧", "london": "🇬🇧", "us": "🇺🇸", "usa": "🇺🇸",
+        "sg": "🇸🇬", "singapore": "🇸🇬", "hk": "🇭🇰", "hongkong": "🇭🇰",
+        "jp": "🇯🇵", "japan": "🇯🇵", "tr": "🇹🇷", "turkey": "🇹🇷",
+        "ru": "🇷🇺", "russia": "🇷🇺", "ua": "🇺🇦", "ukraine": "🇺🇦",
+        "kz": "🇰🇿", "kazakhstan": "🇰🇿", "pl": "🇵🇱", "poland": "🇵🇱"
+    }
+    for key, flag in geo_mapping.items():
+        if key in host:
+            return flag
+    return "🌐"
+
+def extract_host_and_flag(proto, config_url):
+    """Извлекает адрес сервера и подбирает флаг страны"""
+    flag = "🌐"
     try:
-        url = "https://github.com/SagerNet/sing-box/releases/download/v1.11.0-alpha.5/sing-box-1.11.0-alpha.5-linux-amd64.tar.gz"
-        archive_name = "sing-box.tar.gz"
-        urllib.request.urlretrieve(url, archive_name)
-        
-        with tarfile.open(archive_name, "r:gz") as tar:
-            for member in tar.getmembers():
-                if member.name.endswith("sing-box"):
-                    f = tar.extractfile(member)
-                    if f:
-                        with open("./sing-box", "wb") as dest:
-                            dest.write(f.read())
-                        break
-        os.chmod("./sing-box", 0o755)
-        os.remove(archive_name)
-        print("⚙️ sing-box успешно установлен.")
-        return True
-    except Exception as e:
-        print(f"❌ Не удалось скачать sing-box: {e}")
-        return False
+        # Пробуем найти имя/заметку в конце урла после символа #
+        if "#" in config_url:
+            name_part = config_url.split("#")[-1]
+            flag = get_flag_by_host(name_part)
+            if flag != "🌐":
+                return flag
+
+        if proto == "vmess":
+            b64_str = config_url.split("vmess://")[1].split("?")[0]
+            b64_str += "=" * ((4 - len(b64_str) % 4) % 4)
+            decoded = base64.b64decode(b64_str).decode('utf-8', errors='ignore')
+            data = json.loads(decoded)
+            flag = get_flag_by_host(data.get("add", ""))
+            if flag == "🌐" and data.get("ps"):
+                flag = get_flag_by_host(data.get("ps", ""))
+        elif proto == "hysteria2":
+            match = re.search(r'hy2://[^@]+@([^:/]+)', config_url)
+            if match: flag = get_flag_by_host(match.group(1))
+        else:
+            match = re.search(r'([^:]+)://[^@]+@([^:/]+)', config_url)
+            if match: flag = get_flag_by_host(match.group(2))
+    except:
+        pass
+    return flag
 
 def load_configs():
     raw_data = {}
@@ -60,39 +75,31 @@ def load_configs():
         file_path = os.path.join(CONFIG_DIR, f"{proto}.txt")
         if os.path.exists(file_path):
             with open(file_path, "r", encoding="utf-8") as f:
-                lines = [line.strip() for line in f if line.strip() and not line.startswith("No configs")]
+                lines = []
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("No configs") or "No proxies" in line:
+                        continue
+                    if "security=none" in line.lower():
+                        continue
+                    lines.append(line)
                 raw_data[proto] = lines
         else:
             raw_data[proto] = []
     return raw_data
 
-def load_raw_proxies():
+def load_collected_proxies():
     file_path = os.path.join(CONFIG_DIR, "proxies.txt")
+    proxies = []
     if os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as f:
-            return [line.strip() for line in f if line.strip() and "proxy?" in line]
-    return []
-
-async def test_tg_proxy(proxy_url):
-    try:
-        server_match = re.search(r'server=([^&]+)', proxy_url)
-        port_match = re.search(r'port=(\d+)', proxy_url)
-        if not server_match or not port_match:
-            return None
-            
-        server = server_match.group(1)
-        port = int(port_match.group(2))
-        
-        conn = asyncio.open_connection(server, port)
-        reader, writer = await asyncio.wait_for(conn, timeout=TIMEOUT)
-        writer.close()
-        await writer.wait_closed()
-        
-        if proxy_url.startswith("tg://"):
-            proxy_url = proxy_url.replace("tg://", "https://t.me/")
-        return proxy_url
-    except:
-        return None
+            for line in f:
+                line = line.strip()
+                if "proxy?" in line:
+                    if line.startswith("tg://"):
+                        line = line.replace("tg://", "https://t.me/")
+                    proxies.append(line)
+    return list(set(proxies))
 
 async def test_http_via_sing_box(proto, config_url):
     local_port = random.randint(20000, 40000)
@@ -101,18 +108,17 @@ async def test_http_via_sing_box(proto, config_url):
         "inbounds": [{"type": "socks", "listen": "127.0.0.1", "listen_port": local_port}],
         "outbounds": [{"type": "direct", "tag": "direct"}]
     }
-    
     try:
         if proto == "vmess":
             b64_str = config_url.split("vmess://")[1].split("?")[0]
             b64_str += "=" * ((4 - len(b64_str) % 4) % 4)
             decoded = base64.b64decode(b64_str).decode('utf-8', errors='ignore')
             data = json.loads(decoded)
+            if str(data.get("security")).lower() == "none": return None
             outbound = {
                 "type": "vmess", "tag": "proxy",
                 "server": data.get("add"), "server_port": int(data.get("port")),
-                "uuid": data.get("id"), "security": "auto",
-                "alter_id": int(data.get("aid", 0))
+                "uuid": data.get("id"), "security": "auto", "alter_id": int(data.get("aid", 0))
             }
             if data.get("net") == "ws": outbound["transport"] = {"type": "ws", "path": data.get("path", "")}
         elif proto == "hysteria2":
@@ -126,8 +132,7 @@ async def test_http_via_sing_box(proto, config_url):
             match = re.search(r'([^:]+)://([^@]+)@([^:/]+):(\d+)', config_url)
             p_type = "shadowsocks" if proto == "shadowsocks" else proto
             outbound = {
-                "type": p_type, "tag": "proxy",
-                "server": match.group(3), "server_port": int(match.group(4)),
+                "type": p_type, "tag": "proxy", "server": match.group(3), "server_port": int(match.group(4)),
             }
             if p_type == "vless": outbound.update({"uuid": match.group(2), "flow": ""})
             elif p_type == "trojan": outbound.update({"password": match.group(2)})
@@ -146,7 +151,6 @@ async def test_http_via_sing_box(proto, config_url):
         SING_BOX_PATH, "run", "-c", config_filename,
         stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
     )
-    
     await asyncio.sleep(0.4) 
     
     ping_ms = None
@@ -173,9 +177,7 @@ async def test_http_via_sing_box(proto, config_url):
     return ping_ms
 
 async def send_to_telegram(text):
-    if not BOT_TOKEN:
-        print("⚠️ Токен бота пуст!")
-        return
+    if not BOT_TOKEN: return
     import aiohttp
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
@@ -188,46 +190,32 @@ async def send_to_telegram(text):
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload) as resp:
                 if resp.status == 200:
-                    print("✅ Успешно отправлено в Telegram!")
+                    print("✅ Успешно опубликовано!")
                 else:
-                    print(f"❌ Ответ Telegram API (Код {resp.status}): {await resp.text()}")
+                    print(f"❌ Код {resp.status}: {await resp.text()}")
     except Exception as e:
-        print(f"❌ Системный сбой при отправке: {e}")
+        print(f"❌ Ошибка отправки: {e}")
 
 async def check_all_configs():
-    ensure_sing_box()
+    shutil.which("sing-box") or ensure_sing_box()
     raw_configs = load_configs()
     valid_configs = {proto: [] for proto in PROTOCOLS}
     all_scored_configs = [] 
     
     for proto, configs in raw_configs.items():
-        print(f"⏳ HTTP-тест протокола {proto.upper()} ({len(configs)} шт.)...")
+        print(f"⏳ Тест {proto.upper()} ({len(configs)} шт.)...")
         semaphore = asyncio.Semaphore(15)
-        
         async def worker(cfg):
-            async with semaphore: 
-                return await test_http_via_sing_box(proto, cfg)
-                
+            async with semaphore: return await test_http_via_sing_box(proto, cfg)
         tasks = [worker(config) for config in configs]
         if tasks:
             results = await asyncio.gather(*tasks)
             for config, ping in zip(configs, results):
                 if ping is not None: 
                     valid_configs[proto].append(config)
-                    all_scored_configs.append({"config": config, "ping": ping, "proto": proto})
-                    
-        print(f"   └─ Рабочих {proto.upper()}: {len(valid_configs[proto])}")
-        
-    raw_proxies = load_raw_proxies()
-    print(f"⏳ Тестируем {len(raw_proxies)} собранных TG-прокси...")
-    proxy_tasks = [test_tg_proxy(p) for p in raw_proxies]
-    working_proxies = []
-    if proxy_tasks:
-        proxy_results = await asyncio.gather(*proxy_tasks)
-        working_proxies = [p for p in proxy_results if p is not None]
-    print(f"   └─ Рабочих ТГ-прокси: {len(working_proxies)}")
-    
-    return valid_configs, all_scored_configs, working_proxies
+                    flag = extract_host_and_flag(proto, config)
+                    all_scored_configs.append({"config": config, "ping": ping, "proto": proto, "flag": flag})
+    return valid_configs, all_scored_configs
 
 def save_and_export_subscriptions(valid_configs):
     all_clean_configs = []
@@ -238,45 +226,57 @@ def save_and_export_subscriptions(valid_configs):
             with open(os.path.join(SUB_DIR, f"{proto}.txt"), "w", encoding="utf-8") as f:
                 f.write("\n".join(configs) + "\n")
             all_clean_configs.extend(configs)
-            
     if all_clean_configs:
         with open(os.path.join(SUB_DIR, "all.txt"), "w", encoding="utf-8") as f:
             f.write("\n".join(all_clean_configs) + "\n")
 
 async def main():
-    valid_configs, all_scored_configs, working_proxies = await check_all_configs()
+    valid_configs, all_scored_configs = await check_all_configs()
     save_and_export_subscriptions(valid_configs)
     
+    proxies_list = load_collected_proxies()
     sorted_configs = sorted(all_scored_configs, key=lambda x: x["ping"])
     
-    if sorted_configs or working_proxies:
-        print(f"📊 Элементы найдены. Публикуем в {DESTINATION_CHANNEL}...")
+    if sorted_configs or proxies_list:
+        print("📊 Генерация постов в новом стиле...")
         
+        # ПОСТ 1: Ключи V2Ray (Название, Пинг, Флаг)
         if sorted_configs:
-            post_text = "🚀 <b>parserv2 | LIVE CONFIGURATIONS</b> 🚀\n\n"
+            post_text = "🚀 <b>parserv2 | РАБОЧИЕ КОНФИГУРАЦИИ</b> 🚀\n\n"
             for idx, item in enumerate(sorted_configs, start=1):
-                chunk = f"📍 <b>{idx}. [{item['proto'].upper()}]</b> Ping: <code>{item['ping']}ms</code>\n<code>{item['config']}</code>\n\n"
+                chunk = f"{item['flag']} <b>{idx}. [{item['proto'].upper()}]</b> ⚡ Ping: <code>{item['ping']}ms</code>\n<code>{item['config']}</code>\n\n"
                 
                 if len(post_text) + len(chunk) > 3900:
                     post_text += f"🆔 {DESTINATION_CHANNEL}"
                     await send_to_telegram(post_text)
                     await asyncio.sleep(3)
-                    post_text = "🚀 <b>parserv2 | LIVE CONFIGURATIONS (Cont)</b> 🚀\n\n"
+                    post_text = "🚀 <b>РАБОЧИЕ КОНФИГУРАЦИИ (Продолжение)</b>\n\n"
                 post_text += chunk
                 
-            post_text += f"🆔 {DESTINATION_CHANNEL}\n📂 <i>Все ключи сохранены в файлах ваших подписок!</i>"
+            post_text += f"🆔 {DESTINATION_CHANNEL}\n📂 <i>Общие файлы подписок обновлены автоматически!</i>"
             await send_to_telegram(post_text)
-            await asyncio.sleep(3)
+            await asyncio.sleep(4)
 
-        if working_proxies:
-            proxy_text = "🔗 <b>Рабочие MTProto прокси для Telegram:</b>\n\n"
-            for p_idx, proxy in enumerate(working_proxies, start=1):
-                proxy_text += f"• <a href='{proxy}'>MTProto Proxy №{p_idx}</a>\n"
+        # ПОСТ 2: Выделенный пост под MTProto прокси в виде гиперссылок
+        if proxies_list:
+            sample_size = min(len(proxies_list), 7)
+            selected_proxies = random.sample(proxies_list, sample_size)
+            
+            proxy_text = "🔗 <b>Свежие MTProto прокси для Telegram</b>\n"
+            proxy_text += "<i>Нажмите на ссылку, чтобы моментально подключить:</i>\n\n"
+            
+            for p_idx, proxy in enumerate(selected_proxies, start=1):
+                # Извлекаем хост для определения флага прокси
+                host_match = re.search(r'server=([^&]+)', proxy)
+                p_flag = get_flag_by_host(host_match.group(1)) if host_match else "🌐"
+                
+                proxy_text += f"• {p_flag} <a href='{proxy}'>Подключить MTProto Прокси №{p_idx}</a>\n"
+                
             proxy_text += f"\n🆔 {DESTINATION_CHANNEL}"
             await send_to_telegram(proxy_text)
             
     else:
-        print("⚠️ Рабочих элементов не найдено.")
+        print("⚠️ Новых рабочих элементов не найдено.")
 
 if __name__ == "__main__":
     asyncio.run(main())
