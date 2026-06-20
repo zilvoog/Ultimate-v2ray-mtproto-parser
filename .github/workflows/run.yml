@@ -1,4 +1,4 @@
-name: Fetch and Check Configs (No-Account Version)
+name: Fetch and Check Configs
 
 on:
   schedule:
@@ -23,19 +23,19 @@ jobs:
         python -m pip install --upgrade pip
         pip install requests aiohttp aiohttp-socks
 
-    # Шаг 1: Запуск нового веб-парсера
+    # Шаг 1: Запуск парсера
     - name: Run Web Config Fetcher
       run: python parserv2.py
 
-    # Шаг 2: Запуск HTTP-чекера и публикатора
-    - name: Run HTTP Checker & Publisher
+    # Шаг 2: Запуск обоих чекеров последовательно
+    - name: Run Checkers & Publishers
       env:
         TELEGRAM_BOT_TOKEN: "8624370798:AAGT0Bxx73nINuwYO1rzgjuUvF78cPpvg_k"
-        run: |
-          python checker.py
-          python checker_mtproto.py
+      run: |
+        python checker.py
+        python checker_mtproto.py
 
-    # Шаг 3: Сохранение подписок в GitHub
+    # Шаг 3: Сохранение результатов в репозиторий
     - name: Commit and Push changes
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
