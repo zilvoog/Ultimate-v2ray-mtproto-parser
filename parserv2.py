@@ -15,7 +15,9 @@ CONFIG_PATTERNS = {
     "trojan": r"trojan://[^\s\n\"'<]+",
     "hysteria2": r"hy2://[^\s\n\"'<]+"
 }
-PROXY_PATTERN = r"https:\/\/t\.me\/proxy\?server=[^&\s\"'<)]+&port=\d+&secret=[^\s\"'<)]+"
+
+# ПОЧИНЕНО: Универсальный паттерн ловит ссылки tg://proxy?..., t.me/proxy?..., telegram.me/proxy?...
+PROXY_PATTERN = r'(?:tg:\/\/proxy\?|t\.me\/proxy\?|telegram\.me\/proxy\?)[^\s\n\"\'<)]+'
 
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
@@ -28,7 +30,6 @@ def load_channels():
 
 async def fetch_from_web_preview(session, channel_username):
     """Парсит публичную веб-страницу канала Telegram без авторизации"""
-    # Очищаем юзернейм от @ и ссылок
     username = channel_username.replace("@", "").split("/")[-1].strip()
     url = f"https://t.me/s/{username}"
     
@@ -45,12 +46,20 @@ async def fetch_from_web_preview(session, channel_username):
             # Ищем V2Ray/Hysteria ключи
             for proto, pattern in CONFIG_PATTERNS.items():
                 matches = re.findall(pattern, html)
-                # Веб-превью может кодировать амперсанды как &amp;, исправляем это
                 configs[proto] = [m.replace("&amp;", "&") for m in matches]
                 
             # Ищем MTProto прокси
             proxy_matches = re.findall(PROXY_PATTERN, html)
-            proxies = [p.replace("&amp;", "&") for p in proxy_matches]
+            for p in proxy_matches:
+                cleaned = p.replace("&amp;", "&")
+                # Приводим к единому стандарту ссылок tg:// для чекера
+                if "t.me/" in cleaned:
+                    cleaned = cleaned.split("t.me/")[-1]
+                    cleaned = f"tg://{cleaned}"
+                elif "telegram.me/" in cleaned:
+                    cleaned = cleaned.split("telegram.me/")[-1]
+                    cleaned = f"tg://{cleaned}"
+                proxies.append(cleaned)
             
     except Exception as e:
         print(f"❌ Ошибка парсинга веб-версии {channel_username}: {e}")
@@ -75,7 +84,7 @@ async def main():
             for proto in all_configs:
                 all_configs[proto].extend(c_configs[proto])
             all_proxies.extend(c_proxies)
-            await asyncio.sleep(1) # Небольшая пауза, чтобы Telegram не заблокировал IP
+            await asyncio.sleep(1)
 
     # Удаляем дубликаты и сохраняем результаты
     for proto in all_configs:
