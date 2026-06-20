@@ -8,38 +8,36 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install requests aiohttp aiohttp-socks
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install aiohttp aiohttp-socks
 
-    # Шаг 1: Запуск парсера
-    - name: Run Web Config Fetcher
-      run: python parserv2.py
+      - name: Run Parser
+        run: python parserv2.py
 
-    # Шаг 2: Запуск обоих чекеров последовательно
-    - name: Run Checkers & Publishers
-      env:
-        TELEGRAM_BOT_TOKEN: "8624370798:AAGT0Bxx73nINuwYO1rzgjuUvF78cPpvg_k"
-      run: |
-        python checker.py
-        python checker_mtproto.py
+      - name: Run Checkers & Publishers
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          DESTINATION_CHANNEL: ${{ secrets.DESTINATION_CHANNEL }}
+        run: |
+          python checker.py
+          python checker_mtproto.py
 
-    # Шаг 3: Сохранение результатов в репозиторий
-    - name: Commit and Push changes
-      run: |
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        git add Config/ sub/ || true
-        git commit -m "🔄 Update configs: $(date -u +'%Y-%m-%d %H:%M:%S')" || exit 0
-        git push
+      - name: Commit and Push changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add Config/ || true
+          git commit -m "🔄 Update configs: $(date -u +'%Y-%m-%d %H:%M:%S')" || exit 0
+          git push
