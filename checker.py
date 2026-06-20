@@ -44,7 +44,6 @@ def extract_host_and_flag(proto, config_url):
     """Извлекает адрес сервера и подбирает флаг страны"""
     flag = "🌐"
     try:
-        # Пробуем найти имя/заметку в конце урла после символа #
         if "#" in config_url:
             name_part = config_url.split("#")[-1]
             flag = get_flag_by_host(name_part)
@@ -68,6 +67,37 @@ def extract_host_and_flag(proto, config_url):
     except:
         pass
     return flag
+
+def ensure_sing_box():
+    """Скачивает бинарник sing-box, если его нет в системе"""
+    global SING_BOX_PATH
+    if shutil.which("sing-box"):
+        SING_BOX_PATH = "sing-box"
+        return True
+    if os.path.exists("./sing-box"):
+        return True
+        
+    print("📥 Скачивание sing-box для точных HTTP-тестов...")
+    try:
+        url = "https://github.com/SagerNet/sing-box/releases/download/v1.11.0-alpha.5/sing-box-1.11.0-alpha.5-linux-amd64.tar.gz"
+        archive_name = "sing-box.tar.gz"
+        urllib.request.urlretrieve(url, archive_name)
+        
+        with tarfile.open(archive_name, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.name.endswith("sing-box"):
+                    f = tar.extractfile(member)
+                    if f:
+                        with open("./sing-box", "wb") as dest:
+                            dest.write(f.read())
+                        break
+        os.chmod("./sing-box", 0o755)
+        os.remove(archive_name)
+        print("⚙️ sing-box успешно установлен.")
+        return True
+    except Exception as e:
+        print(f"❌ Не удалось скачать sing-box: {e}")
+        return False
 
 def load_configs():
     raw_data = {}
@@ -122,14 +152,14 @@ async def test_http_via_sing_box(proto, config_url):
             }
             if data.get("net") == "ws": outbound["transport"] = {"type": "ws", "path": data.get("path", "")}
         elif proto == "hysteria2":
-            match = re.search(r'hy2://([^@]+)@([^:/]+):(\d+)', config_url)
+            match = re.search(r'hy2://[^@]+@([^:/]+):(\d+)', config_url)
             outbound = {
                 "type": "hysteria2", "tag": "proxy",
                 "server": match.group(2), "server_port": int(match.group(3)),
                 "password": match.group(1), "tls": {"enabled": True, "insecure": True}
             }
         else:
-            match = re.search(r'([^:]+)://([^@]+)@([^:/]+):(\d+)', config_url)
+            match = re.search(r'([^:]+)://[^@]+@([^:/]+):(\d+)', config_url)
             p_type = "shadowsocks" if proto == "shadowsocks" else proto
             outbound = {
                 "type": p_type, "tag": "proxy", "server": match.group(3), "server_port": int(match.group(4)),
@@ -197,7 +227,7 @@ async def send_to_telegram(text):
         print(f"❌ Ошибка отправки: {e}")
 
 async def check_all_configs():
-    shutil.which("sing-box") or ensure_sing_box()
+    ensure_sing_box()  # Исправлено: функция теперь вызывается гарантированно
     raw_configs = load_configs()
     valid_configs = {proto: [] for proto in PROTOCOLS}
     all_scored_configs = [] 
@@ -257,7 +287,7 @@ async def main():
             await send_to_telegram(post_text)
             await asyncio.sleep(4)
 
-        # ПОСТ 2: Выделенный пост под MTProto прокси в виде гиперссылок
+        # ПОСТ 2: MTProto прокси
         if proxies_list:
             sample_size = min(len(proxies_list), 7)
             selected_proxies = random.sample(proxies_list, sample_size)
@@ -266,11 +296,9 @@ async def main():
             proxy_text += "<i>Нажмите на ссылку, чтобы моментально подключить:</i>\n\n"
             
             for p_idx, proxy in enumerate(selected_proxies, start=1):
-                # Извлекаем хост для определения флага прокси
                 host_match = re.search(r'server=([^&]+)', proxy)
                 p_flag = get_flag_by_host(host_match.group(1)) if host_match else "🌐"
-                
-                proxy_text += f"• {p_flag} <a href='{proxy}'>Подключить MTProto Прокси №{p_idx}</a>\n"
+                proxy_text += f"• {p_flag} <a href='{proxy}'>Подключить MTProto Proxy №{p_idx}</a>\n"
                 
             proxy_text += f"\n🆔 {DESTINATION_CHANNEL}"
             await send_to_telegram(proxy_text)
