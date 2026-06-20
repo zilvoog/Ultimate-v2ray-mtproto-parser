@@ -7,7 +7,6 @@ import aiohttp
 CHANNELS_FILE = "telegram_channels.json"
 OUTPUT_DIR = "Config"
 
-# Убраны все лишние пробелы в ключах!
 CONFIG_PATTERNS = {
     "vless": r"vless://[^\s\n\"'<]+",
     "vmess": r"vmess://[^\s\n\"'<]+",
@@ -17,10 +16,9 @@ CONFIG_PATTERNS = {
     "mtproto": r"tg://proxy\?[^\s\n\"'<]+|https://t\.me/proxy\?[^\s\n\"'<]+"
 }
 
-PROXY_PATTERN = r'(?:tg|t|telegram)(?::|\.)?(?:me|me)/(?:proxy\?|join\?invite=)[^\s\n"\'<)]+|tg://proxy\?[^\s\n"\'<)]+'
-
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
+
 
 async def fetch_content(session, username):
     url = f"https://t.me/s/{username}"
@@ -33,6 +31,7 @@ async def fetch_content(session, username):
     except Exception:
         pass
     return "", []
+
 
 async def main():
     print("🚀 Запуск парсера...")
@@ -48,28 +47,26 @@ async def main():
 
     async with aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"}) as session:
         queue = channels_to_parse
-        
-        for i in range(2):
+
+        for _ in range(2):
             next_queue = []
             for username in queue:
                 if username in parsed_channels:
                     continue
-                
+
                 print(f"📡 Анализ: @{username}")
                 text, found_refs = await fetch_content(session, username)
                 parsed_channels.add(username)
-                
+
                 for proto, pattern in CONFIG_PATTERNS.items():
                     matches = re.findall(pattern, text)
-                    # Очистка HTML-entities
                     cleaned = [m.replace("&amp;", "&").strip() for m in matches]
                     all_configs[proto].update(cleaned)
-                
+
                 next_queue.extend(found_refs[:3])
                 await asyncio.sleep(0.8)
             queue = next_queue
 
-    # Сохранение результатов (имена файлов теперь точно совпадают с PROTOCOLS в чекере)
     total = 0
     for proto, configs in all_configs.items():
         if configs:
@@ -78,8 +75,9 @@ async def main():
                 f.write("\n".join(configs) + "\n")
             total += len(configs)
             print(f"💾 Сохранено {len(configs)} {proto}")
-            
+
     print(f"✅ Сбор завершен. Всего уникальных ключей: {total}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
