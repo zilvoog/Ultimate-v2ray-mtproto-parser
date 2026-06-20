@@ -1,44 +1,35 @@
-import os, asyncio, re
+import os, asyncio, re, aiohttp
 
 CONFIG_DIR = "Config"
-BOT_TOKEN = "8624370798:AAGT0Bxx73nINuwYO1rzgjuUvF78cPpvg_k"
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 DESTINATION_CHANNEL = "@rjaviiiiii"
 
-async def is_port_open(host, port):
-    try:
-        conn = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=2)
-        conn[1].close()
-        return True
-    except:
-        return False
+async def check_mt(semaphore, config):
+    async with semaphore:
+        match = re.search(r'server=([^&]+)&port=(\d+)', config)
+        if not match: return None
+        try:
+            conn = await asyncio.wait_for(asyncio.open_connection(match.group(1), int(match.group(2))), timeout=1.5)
+            conn[1].close()
+            return config
+        except: return None
 
 async def main():
     path = os.path.join(CONFIG_DIR, "mtproto.txt")
     if not os.path.exists(path): return
-
     with open(path, "r", encoding="utf-8") as f:
-        configs = list(set([line.strip() for line in f if line.strip()]))
+        configs = list(set(line.strip() for line in f if line.strip()))
+    
+    semaphore = asyncio.Semaphore(30) # MTProto легче, можно 30 параллельно
+    tasks = [check_mt(semaphore, cfg) for cfg in configs]
+    results = [r for r in await asyncio.gather(*tasks) if r]
 
-    working_mt = []
-    for cfg in configs:
-        match = re.search(r'server=([^&]+)&port=(\d+)', cfg)
-        if match:
-            if await is_port_open(match.group(1), int(match.group(2))):
-                working_mt.append(cfg)
-
-    for i in range(0, len(working_mt), 5):
-        chunk = working_mt[i:i+5]
-        text = "✅ <b>РАБОЧИЕ MTPROTO:</b>\n\n"
-        for cfg in chunk:
-            text += f"<code>{cfg}</code>\n\n"
-        # Отправка... (логика та же, что в основном чекере)
-        # Можно вынести send_to_telegram в общий utils.py, если захотите
-        import aiohttp
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": DESTINATION_CHANNEL, "text": text, "parse_mode": "HTML"}
-        async with aiohttp.ClientSession() as session:
-            await session.post(url, json=payload)
-        await asyncio.sleep(1)
+    if results:
+        async with aiohttp.ClientSession() as s:
+            for i in range(0, len(results), 5):
+                text = "✅ <b>РАБОЧИЕ MTPROTO:</b>\n\n" + "\n".join([f"<code>{c}</code>" for c in results[i:i+5]])
+                await s.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": DESTINATION_CHANNEL, "text": text, "parse_mode": "HTML"})
+                await asyncio.sleep(0.5)
 
 if __name__ == "__main__":
     asyncio.run(main())
