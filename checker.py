@@ -6,127 +6,102 @@ from aiohttp_socks import ProxyConnector
 
 CONFIG_DIR = "Config"
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-DESTINATION_CHANNEL = os.environ.get("DESTINATION_CHANNEL", "rjaviiiiii").strip().lstrip("@")
+CHANNEL = "rjaviiiiii"
 PROTOCOLS = ["vless", "vmess", "shadowsocks", "trojan", "hysteria2"]
 
-
-async def check_proxy(semaphore, proto, config):
+async def check(semaphore, proto, config):
     async with semaphore:
         try:
             match = re.search(r'@([^:/]+):(\d+)', config)
             if not match:
                 return None
             host, port = match.group(1), match.group(2)
-            proxy_url = f"socks5://{host}:{port}"
-            connector = ProxyConnector.from_url(proxy_url)
+            proxy = f"socks5://{host}:{port}"
+            conn = ProxyConnector.from_url(proxy)
             timeout = aiohttp.ClientTimeout(total=3)
-
-            async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
-                async with session.get("http://www.google.com/generate_204") as resp:
-                    if resp.status in (200, 204):
+            
+            async with aiohttp.ClientSession(connector=conn, timeout=timeout) as s:
+                async with s.get("http://www.google.com/generate_204") as r:
+                    if r.status in (200, 204):
                         return {"proto": proto, "config": config.strip()}
         except Exception:
             pass
         return None
 
-
 async def send_text(session, text):
-    if not BOT_TOKEN:
-        print("❌ TELEGRAM_BOT_TOKEN не задан в Secrets!")
-        return False
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": DESTINATION_CHANNEL, "text": text, "parse_mode": "HTML"}
+    data = {"chat_id": CHANNEL, "text": text, "parse_mode": "HTML"}
     try:
-        async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status != 200:
-                print(f"❌ TG Text Error: {await resp.text()}")
-                return False
-            return True
+        async with session.post(url, json=data, timeout=aiohttp.ClientTimeout(total=10)) as r:
+            if r.status != 200:
+                print(f"Error: {await r.text()}")
     except Exception as e:
-        print(f"❌ Ошибка отправки текста: {e}")
-        return False
+        print(f"Send error: {e}")
 
-
-async def send_file(session, filename, content_bytes, caption):    if not BOT_TOKEN:
-        return False
+async def send_file(session, filename, content, caption):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
     form = aiohttp.FormData()
-    form.add_field("chat_id", DESTINATION_CHANNEL)
-    form.add_field("document", content_bytes, filename=filename, content_type="text/plain")
+    form.add_field("chat_id", CHANNEL)
+    form.add_field("document", content, filename=filename, content_type="text/plain")
     form.add_field("caption", caption)
     form.add_field("parse_mode", "HTML")
     try:
-        async with session.post(url, data=form, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-            if resp.status != 200:
-                print(f"❌ TG File Error ({filename}): {await resp.text()}")
-                return False
-            print(f"📎 Файл {filename} отправлен")
-            return True
+        async with session.post(url, data=form, timeout=aiohttp.ClientTimeout(total=30)) as r:
+            if r.status != 200:                print(f"File error: {await r.text()}")
+            else:
+                print(f"Sent: {filename}")
     except Exception as e:
-        print(f"❌ Ошибка отправки файла {filename}: {e}")
-        return False
-
+        print(f"File send error: {e}")
 
 async def main():
     if not BOT_TOKEN:
-        print("❌ Завершение: TELEGRAM_BOT_TOKEN отсутствует")
+        print("No token")
         return
-
+    
     semaphore = asyncio.Semaphore(20)
     tasks = []
-
+    
     for proto in PROTOCOLS:
         path = os.path.join(CONFIG_DIR, f"{proto}.txt")
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
-                configs = {line.strip() for line in f if line.strip()}
-                for cfg in configs:
-                    tasks.append(check_proxy(semaphore, proto, cfg))
-
+                for line in f:
+                    cfg = line.strip()
+                    if cfg:
+                        tasks.append(check(semaphore, proto, cfg))
+    
     if not tasks:
         async with aiohttp.ClientSession() as s:
-            await send_text(s, "⚠️ <b>ЧЕКЕР:</b>\nНет конфигов для проверки.")
+            await send_text(s, "No configs")
         return
-
-    print(f"🔍 Проверяем {len(tasks)} конфигов...")
-    raw_results = await asyncio.gather(*tasks)
-    results = [r for r in raw_results if r is not None]
+    
+    print(f"Checking {len(tasks)} configs")
+    results = [r for r in await asyncio.gather(*tasks) if r]
     results.sort(key=lambda x: (x["proto"], x["config"]))
-    print(f"✅ Найдено рабочих: {len(results)}")
-
+    print(f"Found: {len(results)}")
+    
     async with aiohttp.ClientSession() as session:
         if results:
-            grouped = {}            for r in results:
+            grouped = {}
+            for r in results:
                 grouped.setdefault(r["proto"], []).append(r["config"])
-
-            preview_limit = min(5, len(results))
-            lines = [
-                f"⚡ {r['proto'].upper()}\n<code>{r['config']}</code>"
-                for r in results[:preview_limit]
-            ]
-            text = f"✅ <b>РАБОЧИХ КЛЮЧЕЙ: {len(results)}</b>\n\n" + "\n".join(lines)
-            if len(results) > preview_limit:
-                text += f"\n\n<i>...и ещё {len(results) - preview_limit} в файлах ниже 👇</i>"
-
+            
+            preview = results[:5]
+            text = f"Found: {len(results)}\n\n"
+            text += "\n".join(f"{r['proto'].upper()}\n{r['config']}" for r in preview)
+            if len(results) > 5:
+                text += f"\n\n...and {len(results) - 5} more in files"
+            
             await send_text(session, text)
             await asyncio.sleep(1)
-
+            
             for proto, configs in grouped.items():
-                filename = f"{proto}_working.txt"
-                content = "\n".join(configs).encode("utf-8")
-                caption = f"📂 <b>{proto.upper()}</b> — {len(configs)} шт."
+                filename = f"{proto}.txt"                content = "\n".join(configs).encode("utf-8")
+                caption = f"{proto.upper()}: {len(configs)}"
                 await send_file(session, filename, content, caption)
                 await asyncio.sleep(1)
         else:
-            msg = (
-                "❌ <b>ПРОВЕРКА ЗАВЕРШЕНА</b>\n\n"
-                f"Из {len(tasks)} конфигов не найдено ни одного рабочего.\n"
-                "Возможные причины:\n"
-                "• Блокировка IP GitHub Actions\n"
-                "• Все прокси устарели"
-            )
-            await send_text(session, msg)
-
+            await send_text(session, "No working configs found")
 
 if __name__ == "__main__":
     asyncio.run(main())
