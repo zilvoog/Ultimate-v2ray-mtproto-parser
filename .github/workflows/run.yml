@@ -31,8 +31,9 @@ jobs:
     - name: Run HTTP Checker & Publisher
       env:
         TELEGRAM_BOT_TOKEN: "8624370798:AAGT0Bxx73nINuwYO1rzgjuUvF78cPpvg_k"
-      run: python checker.py
-      run: python checker_mtproto.py
+        run: |
+        python checker.py
+        python checker_mtproto.py
 
     # Шаг 3: Сохранение подписок в GitHub
     - name: Commit and Push changes
