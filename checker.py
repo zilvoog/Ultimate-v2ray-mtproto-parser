@@ -4,23 +4,28 @@ import aiohttp
 import re
 from aiohttp_socks import ProxyConnector
 
-CONFIG_DIR = "Config"
+# Безопасное получение конфигурации из переменных окружения GitHub Actions
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 DESTINATION_CHANNEL = os.environ.get("DESTINATION_CHANNEL", "rjaviiiiii").strip().lstrip("@")
+CONFIG_DIR = "Config"
 PROTOCOLS = ["vless", "vmess", "shadowsocks", "trojan", "hysteria2"]
 
 
-async def check_http(semaphore, proto, config):
+async def check_proxy(semaphore: asyncio.Semaphore, proto: str, config: str) -> dict | None:
+    """Проверяет работоспособность конфига через SOCKS5"""
     async with semaphore:
         try:
             match = re.search(r'@([^:/]+):(\d+)', config)
             if not match:
                 return None
+
             host, port = match.group(1), match.group(2)
             proxy_url = f"socks5://{host}:{port}"
             connector = ProxyConnector.from_url(proxy_url)
             timeout = aiohttp.ClientTimeout(total=3)
+
             async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+                # generate_204 быстрее и реже блокируется в CI/CD, чем главная страница
                 async with session.get("http://www.google.com/generate_204") as resp:
                     if resp.status in (200, 204):
                         return {"proto": proto, "config": config.strip()}
@@ -29,102 +34,115 @@ async def check_http(semaphore, proto, config):
         return None
 
 
-async def send_telegram_text(session, text):
+async def send_text(session: aiohttp.ClientSession, text: str) -> bool:
+    """Отправляет текстовое сообщение в Telegram"""
     if not BOT_TOKEN:
-        print("❌ TELEGRAM_BOT_TOKEN не задан!")
+        print("❌ ОШИБКА: TELEGRAM_BOT_TOKEN не задан в Secrets!")
         return False
+
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": DESTINATION_CHANNEL, "text": text, "parse_mode": "HTML"}
+
     try:
         async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
             if resp.status != 200:
-                err = await resp.text()
-                print(f"❌ TG Text Error: {err}")
-                return False
-            return True
+                print(f"❌ TG API Error (text): {await resp.text()}")
+                return False            return True
     except Exception as e:
-        print(f"❌ Ошибка отправки текста: {e}")
+        print(f"❌ Ошибка сети (text): {e}")
         return False
 
 
-async def send_telegram_file(session, filename, content_bytes, caption=""):    if not BOT_TOKEN:
+async def send_file(session: aiohttp.ClientSession, filename: str, content: bytes, caption: str) -> bool:
+    """Отправляет .txt файл в Telegram"""
+    if not BOT_TOKEN:
         return False
+
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
-    data = aiohttp.FormData()
-    data.add_field('chat_id', DESTINATION_CHANNEL)
-    data.add_field('document', content_bytes, filename=filename, content_type='text/plain')
-    if caption:
-        data.add_field('caption', caption)
-        data.add_field('parse_mode', 'HTML')
+    form = aiohttp.FormData()
+    form.add_field("chat_id", DESTINATION_CHANNEL)
+    form.add_field("document", content, filename=filename, content_type="text/plain")
+    form.add_field("caption", caption)
+    form.add_field("parse_mode", "HTML")
+
     try:
-        async with session.post(url, data=data, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+        async with session.post(url, data=form, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             if resp.status != 200:
-                err = await resp.text()
-                print(f"❌ TG File Error ({filename}): {err}")
+                print(f"❌ TG API Error ({filename}): {await resp.text()}")
                 return False
-            print(f"📎 Файл {filename} успешно отправлен")
+            print(f"📎 Файл {filename} отправлен")
             return True
     except Exception as e:
-        print(f"❌ Ошибка отправки файла {filename}: {e}")
+        print(f"❌ Ошибка сети ({filename}): {e}")
         return False
 
 
 async def main():
+    if not BOT_TOKEN:
+        print("❌ Завершение: TELEGRAM_BOT_TOKEN отсутствует в переменных окружения")
+        return
+
     semaphore = asyncio.Semaphore(20)
     tasks = []
+
+    # Сбор задач на проверку
     for proto in PROTOCOLS:
         path = os.path.join(CONFIG_DIR, f"{proto}.txt")
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
-                configs = set(line.strip() for line in f if line.strip())
+                configs = {line.strip() for line in f if line.strip()}
                 for cfg in configs:
-                    tasks.append(check_http(semaphore, proto, cfg))
+                    tasks.append(check_proxy(semaphore, proto, cfg))
 
     if not tasks:
-        msg = "⚠️ <b>ПАРСЕР:</b>\nНет конфигов для проверки."
-        print("Нет конфигов для проверки")
         async with aiohttp.ClientSession() as s:
-            await send_telegram_text(s, msg)
-        return
+            await send_text(s, "⚠️ <b>ЧЕКЕР:</b>\nНет конфигов для проверки.")        return
 
     print(f"🔍 Проверяем {len(tasks)} конфигов...")
     raw_results = await asyncio.gather(*tasks)
     results = [r for r in raw_results if r is not None]
-    results.sort(key=lambda x: (x['proto'], x['config']))
+
+    # Сортировка: по протоколу, затем по конфигу
+    results.sort(key=lambda x: (x["proto"], x["config"]))
     print(f"✅ Найдено рабочих: {len(results)}")
 
     async with aiohttp.ClientSession() as session:
         if results:
-            grouped = {}
-            for r in results:                grouped.setdefault(r['proto'], []).append(r['config'])
+            # Группировка для файлов
+            grouped: dict[str, list[str]] = {}
+            for r in results:
+                grouped.setdefault(r["proto"], []).append(r["config"])
 
-            preview_count = min(5, len(results))
-            preview_text = f"✅ <b>НАЙДЕНО РАБОЧИХ КЛЮЧЕЙ: {len(results)}</b>\n\n"
-            preview_text += "\n".join([
+            # Текстовое превью (первые 5 ключей)
+            preview_limit = min(5, len(results))
+            lines = [
                 f"⚡ {r['proto'].upper()}\n<code>{r['config']}</code>"
-                for r in results[:preview_count]
-            ])
-            if len(results) > preview_count:
-                preview_text += f"\n\n<i>...и еще {len(results) - preview_count} ключей в прикрепленных файлах 👇</i>"
+                for r in results[:preview_limit]
+            ]
+            text = f"✅ <b>РАБОЧИХ КЛЮЧЕЙ: {len(results)}</b>\n\n" + "\n".join(lines)
+            if len(results) > preview_limit:
+                text += f"\n\n<i>...и ещё {len(results) - preview_limit} в файлах ниже 👇</i>"
 
-            await send_telegram_text(session, preview_text)
+            await send_text(session, text)
             await asyncio.sleep(1)
 
+            # Отправка файлов по протоколам
             for proto, configs in grouped.items():
                 filename = f"{proto}_working.txt"
                 content = "\n".join(configs).encode("utf-8")
-                caption = f"📂 <b>{proto.upper()}</b>: {len(configs)} шт."
-                await send_telegram_file(session, filename, content, caption)
+                caption = f"📂 <b>{proto.upper()}</b> — {len(configs)} шт."
+                await send_file(session, filename, content, caption)
                 await asyncio.sleep(1)
         else:
             msg = (
                 "❌ <b>ПРОВЕРКА ЗАВЕРШЕНА</b>\n\n"
-                f"Из {len(tasks)} проверенных конфигов не найдено ни одного рабочего.\n"
+                f"Из {len(tasks)} конфигов не найдено ни одного рабочего.\n"
                 "Возможные причины:\n"
                 "• Блокировка IP GitHub Actions\n"
                 "• Все прокси устарели"
             )
-            await send_telegram_text(session, msg)
+            await send_text(session, msg)
 
 
-if __name
+if __name__ == "__main__":
+    asyncio.run(main())
