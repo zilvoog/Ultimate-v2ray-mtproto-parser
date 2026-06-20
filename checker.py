@@ -2,12 +2,11 @@ import os
 import asyncio
 import aiohttp
 import re
-import io
 from aiohttp_socks import ProxyConnector
 
 CONFIG_DIR = "Config"
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-# ВАЖНО: Убираем @ и пробелы для корректной работы API
+# Убираем @ и пробелы для корректной работы API
 DESTINATION_CHANNEL = os.environ.get("DESTINATION_CHANNEL", "rjaviiiiii").strip().lstrip("@")
 PROTOCOLS = ["vless", "vmess", "shadowsocks", "trojan", "hysteria2"]
 
@@ -47,8 +46,8 @@ async def send_telegram_text(session, text):
     payload = {"chat_id": DESTINATION_CHANNEL, "text": text, "parse_mode": "HTML"}
     
     try:
-        async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:            if resp.status != 200:
-                err = await resp.text()
+        async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            if resp.status != 200:                err = await resp.text()
                 print(f"❌ TG Text Error: {err}")
                 return False
             return True
@@ -64,7 +63,6 @@ async def send_telegram_file(session, filename, content_bytes, caption=""):
         
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
     
-    # Формируем multipart/form-data вручную для aiohttp
     data = aiohttp.FormData()
     data.add_field('chat_id', DESTINATION_CHANNEL)
     data.add_field('document', 
@@ -92,14 +90,13 @@ async def main():
     semaphore = asyncio.Semaphore(20)
     tasks = []
     
-    # Сбор задач на проверку
     for proto in PROTOCOLS:
         path = os.path.join(CONFIG_DIR, f"{proto}.txt")
         if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:                configs = set(line.strip() for line in f if line.strip())
+            with open(path, "r", encoding="utf-8") as f:
+                configs = set(line.strip() for line in f if line.strip())
                 for cfg in configs:
-                    tasks.append(check_http(semaphore, proto, cfg))
-    
+                    tasks.append(check_http(semaphore, proto, cfg))    
     if not tasks:
         msg = "⚠️ <b>ПАРСЕР:</b>\nНет конфигов для проверки."
         print("Нет конфигов для проверки")
@@ -118,12 +115,12 @@ async def main():
     
     async with aiohttp.ClientSession() as session:
         if results:
-            # 1. Группировка по протоколам для файлов
+            # Группировка по протоколам для файлов
             grouped = {}
             for r in results:
                 grouped.setdefault(r['proto'], []).append(r['config'])
             
-            # 2. Отправка текстового превью (первые 5 штук)
+            # Текстовое превью (первые 5 штук)
             preview_count = min(5, len(results))
             preview_text = f"✅ <b>НАЙДЕНО РАБОЧИХ КЛЮЧЕЙ: {len(results)}</b>\n\n"
             preview_text += "\n".join([
@@ -136,22 +133,20 @@ async def main():
             await send_telegram_text(session, preview_text)
             await asyncio.sleep(1)
             
-            # 3. Отправка .txt файлов по каждому протоколу
+            # Отправка .txt файлов по каждому протоколу
             for proto, configs in grouped.items():
                 filename = f"{proto}_working.txt"
                 content = "\n".join(configs).encode("utf-8")
                 caption = f"📂 <b>{proto.upper()}</b>: {len(configs)} шт."
                 
                 await send_telegram_file(session, filename, content, caption)
-                await asyncio.sleep(1)  # Защита от flood control
+                await asyncio.sleep(1)
                 
-        else:            # Сообщение при отсутствии результатов
+        else:
             msg = ("❌ <b>ПРОВЕРКА ЗАВЕРШЕНА</b>\n\n"
                    f"Из {len(tasks)} проверенных конфигов не найдено ни одного рабочего.\n"
-                   "Возможные причины:\n"
-                   "• Блокировка IP GitHub Actions\n"
-                   "• Все прокси устарели\n"
-                   "• Проблемы с DNS в раннере")
+                   "Возможные причины:\n"                   "• Блокировка IP GitHub Actions\n"
+                   "• Все прокси устарели")
             await send_telegram_text(session, msg)
 
 
