@@ -1,3 +1,2 @@
 hy2://c6b2924e-a913-4864-a910-b446b9841b4b@185.181.10.237:443/?sni=connect-ger2.gadmap.online#%F0%9F%87%A9%F0%9F%87%AA%20%2019%40exclavevpn
 hy2://43bcba7d-cd22-379c-a7da-2e8eafecbc78@195.133.53.225:443/?sni=u711540us462.csgfw.top#%F0%9F%87%B7%F0%9F%87%BA%20%2020%40exclavevpn
-hy2://be7441a663ef465566e3a6e441a16357@188.225.80.130:7443/?insecure=1&sni=tw-vds.t1n2.com#%F0%9F%87%B7%F0%9F%87%BA%2018%40exclavevpn
