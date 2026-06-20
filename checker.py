@@ -14,9 +14,8 @@ SUB_DIR = "sub"
 TIMEOUT = 5  # Максимальное время ожидания ответа (в секундах)
 TEST_URL = "http://cp.cloudflare.com/generate_204"
 
-# Загрузка токена бота из секретов GitHub Actions (Используем имя переменной!)
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", None)
-# Укажи здесь юзернейм своего канала (обязательно с @)
+# Напрямую указываем токен и канал, чтобы исключить любые проблемы с переменными
+BOT_TOKEN = "8624370798:AAGT0Bxx73nINuwYO1rzgjuUvF78cPpvg_k"
 DESTINATION_CHANNEL = "@rjaviiiiii" 
 
 PROTOCOLS = ["vless", "vmess", "shadowsocks", "trojan", "hysteria2"]
@@ -74,7 +73,8 @@ def load_raw_proxies():
     file_path = os.path.join(CONFIG_DIR, "proxies.txt")
     if os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as f:
-            return [line.strip() for line in f if line.strip() and line.startswith("https://t.me/proxy")]
+            # ПОЧИНЕНО: Теперь читает ссылки и с https://t.me/proxy, и с tg://proxy
+            return [line.strip() for line in f if line.strip() and ("proxy?" in line)]
     return []
 
 async def test_tg_proxy(proxy_url):
@@ -92,6 +92,10 @@ async def test_tg_proxy(proxy_url):
         reader, writer = await asyncio.wait_for(conn, timeout=TIMEOUT)
         writer.close()
         await writer.wait_closed()
+        
+        # Приводим к единому формату https кликабельной ссылки для отправки в ТГ
+        if proxy_url.startswith("tg://"):
+            proxy_url = proxy_url.replace("tg://", "https://t.me/")
         return proxy_url
     except:
         return None
@@ -140,7 +144,7 @@ async def test_http_via_sing_box(proto, config_url):
         sb_config["outbounds"].insert(0, outbound)
         sb_config["route"] = {"rules": [{"outbound": "proxy"}], "final": "proxy"}
     except Exception:
-        return None  # Ошибка парсинга ссылки
+        return None
         
     config_filename = f"temp_{local_port}.json"
     with open(config_filename, "w") as f:
@@ -151,7 +155,7 @@ async def test_http_via_sing_box(proto, config_url):
         stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
     )
     
-    await asyncio.sleep(0.4) # Даем время ядру подняться
+    await asyncio.sleep(0.4)
     
     ping_ms = None
     try:
@@ -179,7 +183,7 @@ async def test_http_via_sing_box(proto, config_url):
 async def send_to_telegram(text):
     """Отправляет готовый пост в Telegram-канал"""
     if not BOT_TOKEN:
-        print("⚠️ Секрет TELEGRAM_BOT_TOKEN не задан в репозитории. Публикация отменена.")
+        print("⚠️ Токен бота пуст.")
         return
     import aiohttp
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -195,7 +199,7 @@ async def send_to_telegram(text):
                 if resp.status == 200:
                     print("✅ Пост успешно опубликован в канал!")
                 else:
-                    print(f"❌ Ошибка публикации Telegram API: {await resp.text()}")
+                    print(f"❌ Ошибка Telegram API: {await resp.text()}")
     except Exception as e:
         print(f"❌ Не удалось отправить сообщение: {e}")
 
@@ -203,9 +207,8 @@ async def check_all_configs():
     ensure_sing_box()
     raw_configs = load_configs()
     valid_configs = {proto: [] for proto in PROTOCOLS}
-    all_scored_configs = [] # Для сбора всех рабочих ключей
+    all_scored_configs = []
     
-    # 1. Тестируем V2Ray/Hysteria ключи
     for proto, configs in raw_configs.items():
         print(f"⏳ HTTP-тест протокола {proto.upper()} ({len(configs)} шт.)...")
         semaphore = asyncio.Semaphore(15)
@@ -224,7 +227,6 @@ async def check_all_configs():
                     
         print(f"   └─ Рабочих {proto.upper()}: {len(valid_configs[proto])}")
         
-    # 2. Тестируем Telegram MTProto прокси
     raw_proxies = load_raw_proxies()
     print(f"⏳ Тестируем {len(raw_proxies)} собранных TG-прокси...")
     proxy_tasks = [test_tg_proxy(p) for p in raw_proxies]
@@ -237,13 +239,10 @@ async def check_all_configs():
     return valid_configs, all_scored_configs, working_proxies
 
 def save_and_export_subscriptions(valid_configs):
-    """Сохраняет ВСЕ рабочие ключи в plain-text файлы подписок"""
     all_clean_configs = []
     for proto, configs in valid_configs.items():
-        # Обновляем файлы в Config/
         with open(os.path.join(CONFIG_DIR, f"{proto}.txt"), "w", encoding="utf-8") as f:
             f.write("\n".join(configs) + "\n" if configs else "No configs found.\n")
-        # Создаем файлы в sub/
         if configs:
             with open(os.path.join(SUB_DIR, f"{proto}.txt"), "w", encoding="utf-8") as f:
                 f.write("\n".join(configs) + "\n")
@@ -255,50 +254,38 @@ def save_and_export_subscriptions(valid_configs):
 
 async def main():
     valid_configs, all_scored_configs, working_proxies = await check_all_configs()
-    
-    # 1. Сначала экспортируем ВСЕ рабочие ключи во все файлы подписок
     save_and_export_subscriptions(valid_configs)
-    print("📂 Все рабочие ключи добавлены в файлы папки /sub")
     
-    # Сортируем все проверенные ключи от самых быстрых к медленным
     sorted_configs = sorted(all_scored_configs, key=lambda x: x["ping"])
     
-    # 2. Логика публикации: отправляем ВСЁ, что есть живого
+    # ПОЧИНЕНО И УПРОЩЕНО: Бот шлет вообще ВСЕ выжившие элементы!
     if sorted_configs or working_proxies:
-        print(f"📊 Найдено {len(sorted_configs)} рабочих ключей и {len(working_proxies)} прокси. Формируем посты...")
+        print(f"📊 Найдено элементов. Публикуем...")
         
-        # Отправляем рабочие V2Ray конфигурации
         if sorted_configs:
             post_text = "🚀 **parserv2 | LIVE CONFIGURATIONS** 🚀\n\n"
-            post_text += "⚡ Найдено новые рабочие конфигурации с минимальной задержкой:\n\n"
-            
             for idx, item in enumerate(sorted_configs, start=1):
                 chunk = f"📍 **{idx}. [{item['proto'].upper()}]** Ping: `{item['ping']}ms`\n```{item['config']}```\n\n"
-                
-                # Если сообщение становится слишком длинным для одного поста Telegram (лимит 4096 символов), отправляем его и начинаем новое
                 if len(post_text) + len(chunk) > 3900:
                     post_text += f"🆔 {DESTINATION_CHANNEL}"
                     await send_to_telegram(post_text)
-                    await asyncio.sleep(3)  # Пауза против спам-фильтра
+                    await asyncio.sleep(3)
                     post_text = "🚀 **parserv2 | LIVE CONFIGURATIONS (Продолжение)** 🚀\n\n"
-                
                 post_text += chunk
                 
-            post_text += f"🆔 {DESTINATION_CHANNEL}\n📂 _Все остальные ключи обновлены в файлах ваших подписок!_"
+            post_text += f"🆔 {DESTINATION_CHANNEL}\n📂 _Все ключи сохранены в ваших подписках!_"
             await send_to_telegram(post_text)
             await asyncio.sleep(3)
 
-        # Отправляем рабочие MTProto прокси
         if working_proxies:
             proxy_text = "🔗 **Рабочие MTProto прокси для Telegram:**\n\n"
             for p_idx, proxy in enumerate(working_proxies, start=1):
                 proxy_text += f"• [MTProto Proxy №{p_idx}]({proxy})\n"
-            
             proxy_text += f"\n🆔 {DESTINATION_CHANNEL}"
             await send_to_telegram(proxy_text)
             
     else:
-        print("⚠️ Публикация отменена: после проверки не найдено ни одного живого элемента.")
+        print("⚠️ Живых элементов не обнаружено.")
 
 if __name__ == "__main__":
     asyncio.run(main())
