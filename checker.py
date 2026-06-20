@@ -6,7 +6,6 @@ from aiohttp_socks import ProxyConnector
 
 CONFIG_DIR = "Config"
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-# Убираем @ и пробелы для корректной работы API
 DESTINATION_CHANNEL = os.environ.get("DESTINATION_CHANNEL", "rjaviiiiii").strip().lstrip("@")
 PROTOCOLS = ["vless", "vmess", "shadowsocks", "trojan", "hysteria2"]
 
@@ -47,8 +46,8 @@ async def send_telegram_text(session, text):
         print(f"❌ Ошибка отправки текста: {e}")
         return False
 
-async def send_telegram_file(session, filename, content_bytes, caption=""):
-    if not BOT_TOKEN:
+
+async def send_telegram_file(session, filename, content_bytes, caption=""):    if not BOT_TOKEN:
         return False
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
     data = aiohttp.FormData()
@@ -96,8 +95,8 @@ async def main():
 
     async with aiohttp.ClientSession() as session:
         if results:
-            grouped = {}            for r in results:
-                grouped.setdefault(r['proto'], []).append(r['config'])
+            grouped = {}
+            for r in results:                grouped.setdefault(r['proto'], []).append(r['config'])
 
             preview_count = min(5, len(results))
             preview_text = f"✅ <b>НАЙДЕНО РАБОЧИХ КЛЮЧЕЙ: {len(results)}</b>\n\n"
@@ -128,5 +127,4 @@ async def main():
             await send_telegram_text(session, msg)
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name
