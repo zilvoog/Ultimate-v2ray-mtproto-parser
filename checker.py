@@ -6,7 +6,7 @@ from aiohttp_socks import ProxyConnector
 
 CONFIG_DIR = "Config"
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-CHANNEL = "rjaviiiiii"
+CHANNEL = "@rjaviiiiii"  # добавлен @
 PROTOCOLS = ["vless", "vmess", "shadowsocks", "trojan", "hysteria2"]
 
 async def check(semaphore, proto, config):
@@ -47,7 +47,8 @@ async def send_file(session, filename, content, caption):
     form.add_field("parse_mode", "HTML")
     try:
         async with session.post(url, data=form, timeout=aiohttp.ClientTimeout(total=30)) as r:
-            if r.status != 200:                print(f"File error: {await r.text()}")
+            if r.status != 200:
+                print(f"File error: {await r.text()}")
             else:
                 print(f"Sent: {filename}")
     except Exception as e:
@@ -96,7 +97,8 @@ async def main():
             await asyncio.sleep(1)
             
             for proto, configs in grouped.items():
-                filename = f"{proto}.txt"                content = "\n".join(configs).encode("utf-8")
+                filename = f"{proto}.txt"
+                content = "\n".join(configs).encode("utf-8")
                 caption = f"{proto.upper()}: {len(configs)}"
                 await send_file(session, filename, content, caption)
                 await asyncio.sleep(1)
