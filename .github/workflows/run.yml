@@ -32,6 +32,7 @@ jobs:
       env:
         TELEGRAM_BOT_TOKEN: "8624370798:AAGT0Bxx73nINuwYO1rzgjuUvF78cPpvg_k"
       run: python checker.py
+      run: python checker_mtproto.py
 
     # Шаг 3: Сохранение подписок в GitHub
     - name: Commit and Push changes
