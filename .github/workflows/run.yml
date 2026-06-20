@@ -10,17 +10,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # Обновлено с v4 до v5 (исправляет Node.js 20 deprecation)
     - name: Checkout repository
       uses: actions/checkout@v5
 
-    # Обновлено с v5 до v6 (исправляет Node.js 20 deprecation)
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
         python-version: '3.10'
 
-    # Исправлен запуск Python-скриптов через команду "python" для Linux-среды
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -33,7 +30,7 @@ jobs:
     # Шаг 2: Запуск HTTP-чекера и публикатора
     - name: Run HTTP Checker & Publisher
       env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_BOT_TOKEN: "8624370798:AAGT0Bxx73nINuwYO1rzgjuUvF78cPpvg_k"
       run: python checker.py
 
     # Шаг 3: Сохранение подписок в GitHub
