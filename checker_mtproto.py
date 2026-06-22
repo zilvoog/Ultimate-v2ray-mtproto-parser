@@ -80,6 +80,9 @@ async def main():
     tasks = [check_mt(semaphore, cfg) for cfg in configs]
     results = [r for r in await asyncio.gather(*tasks) if r]
 
+    # Удаляем дубликаты среди рабочих
+    results = list(set(results))
+
     if not results:
         print("No working mtproto configs")
         return
