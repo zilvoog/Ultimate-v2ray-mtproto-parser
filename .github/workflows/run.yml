@@ -24,7 +24,7 @@ jobs:
         pip install requests aiohttp aiohttp-socks
 
     - name: Run Web Config Fetcher
-      run: python parserv2.py
+      run: python parserv3.py
 
     - name: Run Checkers & Publishers
       env:
