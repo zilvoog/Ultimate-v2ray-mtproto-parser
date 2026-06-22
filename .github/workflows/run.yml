@@ -29,6 +29,8 @@ jobs:
     - name: Run Checkers & Publishers
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHANNEL: ${{ secrets.TELEGRAM_CHANNEL }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
         python checker.py
         python checker_mtproto.py
@@ -37,6 +39,6 @@ jobs:
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
-        git add Config/ || true
+        git add Config/ sub/ || true
         git commit -m "🔄 Update configs: $(date -u +'%Y-%m-%d %H:%M:%S')" || exit 0
         git push
