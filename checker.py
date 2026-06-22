@@ -109,15 +109,17 @@ async def main():
 
     repo = os.environ.get("GITHUB_REPOSITORY")
     if repo:
-        raw_url = f"https://raw.githubusercontent.com/{repo}/main/sub/allconfig.txt"
+        base_raw = f"https://raw.githubusercontent.com/{repo}/main/sub/"
     else:
-        raw_url = "https://raw.githubusercontent.com/your-username/your-repo/main/sub/allconfig.txt"
+        base_raw = "https://raw.githubusercontent.com/your-username/your-repo/main/sub/"
 
-    message = (
-        "✅ <b>Подписка обновлена!</b>\n"
-        f"🔗 <a href=\"{raw_url}\">Скачать все рабочие конфиги (raw)</a>\n"
-        f"📁 Всего рабочих конфигов: {len(all_configs)}"
-    )
+    message = "✅ <b>Подписка обновлена!</b>\n\n"
+    message += f"📦 <a href=\"{base_raw}allconfig.txt\">Все рабочие конфиги (все протоколы)</a>\n"
+
+    if "whitelist" in grouped and grouped["whitelist"]:
+        message += f"📦 <a href=\"{base_raw}whitelist.txt\">Whitelist (только vless+hy2)</a>\n"
+
+    message += f"\n📊 Всего рабочих конфигов: {len(all_configs)}"
 
     async with aiohttp.ClientSession() as session:
         await send_message(session, message)
