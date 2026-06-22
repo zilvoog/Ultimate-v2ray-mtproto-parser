@@ -114,10 +114,14 @@ async def main():
         base_raw = "https://raw.githubusercontent.com/your-username/your-repo/main/sub/"
 
     message = "✅ <b>Подписка обновлена!</b>\n\n"
-    message += f"📦 <a href=\"{base_raw}allconfig.txt\">Все рабочие конфиги (все протоколы)</a>\n"
+    message += f"📦 <a href=\"{base_raw}allconfig.txt\">allconfig.txt</a> (все протоколы)\n"
 
-    if "whitelist" in grouped and grouped["whitelist"]:
-        message += f"📦 <a href=\"{base_raw}whitelist.txt\">Whitelist (только vless+hy2)</a>\n"
+    for file_name in sorted(grouped.keys()):
+        if file_name == "whitelist":
+            label = "whitelist.txt"
+        else:
+            label = f"{file_name}.txt"
+        message += f"📦 <a href=\"{base_raw}{file_name}.txt\">{label}</a>\n"
 
     message += f"\n📊 Всего рабочих конфигов: {len(all_configs)}"
 
