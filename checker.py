@@ -93,19 +93,19 @@ async def main():
         return
 
     grouped = {}
+    all_configs_set = set()
     for r in results:
-        grouped.setdefault(r["file"], []).append(r["config"])
+        grouped.setdefault(r["file"], set()).add(r["config"])
+        all_configs_set.add(r["config"])
 
-    all_configs = []
     for file_name, configs in grouped.items():
         sub_path = os.path.join(SUB_DIR, f"{file_name}.txt")
         with open(sub_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(configs) + "\n")
-        all_configs.extend(configs)
+            f.write("\n".join(sorted(configs)) + "\n")
 
     all_path = os.path.join(SUB_DIR, "allconfig.txt")
     with open(all_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(all_configs) + "\n")
+        f.write("\n".join(sorted(all_configs_set)) + "\n")
 
     repo = os.environ.get("GITHUB_REPOSITORY")
     if repo:
@@ -114,16 +114,13 @@ async def main():
         base_raw = "https://raw.githubusercontent.com/your-username/your-repo/main/sub/"
 
     message = "✅ <b>Подписка обновлена!</b>\n\n"
-    message += f"📦 <a href=\"{base_raw}allconfig.txt\">allconfig.txt</a> (все протоколы)\n"
+    message += f"📦 <a href=\"{base_raw}allconfig.txt\">allconfig.txt</a>\n"
 
     for file_name in sorted(grouped.keys()):
-        if file_name == "whitelist":
-            label = "whitelist.txt"
-        else:
-            label = f"{file_name}.txt"
+        label = f"{file_name}.txt"
         message += f"📦 <a href=\"{base_raw}{file_name}.txt\">{label}</a>\n"
 
-    message += f"\n📊 Всего рабочих конфигов: {len(all_configs)}"
+    message += f"\n📊 Всего уникальных рабочих конфигов: {len(all_configs_set)}"
 
     async with aiohttp.ClientSession() as session:
         await send_message(session, message)
