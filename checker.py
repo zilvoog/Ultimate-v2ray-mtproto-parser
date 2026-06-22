@@ -144,7 +144,6 @@ async def main():
         if len(results) > 5:
             text += f"… и ещё {len(results) - 5} в прикреплённых файлах"
 
-        await send_text(session, text)
         await asyncio.sleep(1)
 
         # 3. Отправляем файлы по протоколам (только для тех, у которых есть рабочие)
