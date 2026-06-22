@@ -24,6 +24,8 @@ jobs:
         pip install requests aiohttp aiohttp-socks
 
     - name: Run Web Config Fetcher
+      env:
+        TELEGRAM_CHANNEL: ${{ secrets.TELEGRAM_CHANNEL }}
       run: python parserv3.py
 
     - name: Run Checkers & Publishers
