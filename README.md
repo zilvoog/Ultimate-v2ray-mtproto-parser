@@ -62,7 +62,7 @@
 You must set these GitHub secrets for Telegram publishing:
 
 - `TELEGRAM_BOT_TOKEN` – your bot token
-- `TELEGRAM_CHANNEL` – channel username (with or without `@`, e.g. `rjaviiiiii`)
+- `TELEGRAM_CHANNEL` – channel username (with or without `@`)
 
 #### How to use
 
@@ -114,7 +114,7 @@ Developed and maintained by **Rjavii_Gang**.
 | Файл / Папка | Описание |
 | :--- | :--- |
 | `Config/` | Сырые собранные конфиги (до проверки) |
-| `Config/vless.txt`, `vmess.txt`, ... | Конфиги по протоколам (из Telegram) |
+| `Config/vless.txt`, `vmess.txt`, ... из|протоколамиз Конфиги по протоколам (из Telegram) |
 | `Config/whitelist.txt` | `vless` + `hy2` из 4pda/GitHub |
 | `Config/mtproto.txt` | Собранные MTProto-ссылки (`tg://proxy?…`) |
 | `sub/` | **Проверенные и рабочие** конфиги (публикуются) |
@@ -133,7 +133,7 @@ Developed and maintained by **Rjavii_Gang**.
 Для публикации в Telegram необходимо добавить следующие секреты в настройках репозитория:
 
 - `TELEGRAM_BOT_TOKEN` – токен вашего бота
-- `TELEGRAM_CHANNEL` – имя канала (с `@` или без, например `rjaviiiiii`)
+- `TELEGRAM_CHANNEL` – имя канала (с `@` или без)
 
 #### Как использовать
 
