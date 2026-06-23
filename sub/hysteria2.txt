@@ -1,1 +1,2 @@
-hy2://43bcba7d-cd22-379c-a7da-2e8eafecbc78@195.133.53.225:443/?sni=u711540us462.csgfw.top#%F0%9F%87%B7%F0%9F%87%BA%20%2020%40exclavevpn
+hy2://00dcd873-9211-4d61-ad35-87999906e5c8@fta.fontanvpn.com:443/?sni=fta.fontanvpn.com#%F0%9F%90%AC66%40oneclickvpnkeys
+hy2://p7Q76LzlnS4hIzr1W3staBOnUe_WwSkR@130.49.161.70:443/?insecure=1&sni=hy2.aspidnet.xyz&obfs=salamander&obfs-password=rG07s3COMIEvdnQipRyWzx_H_2xygNC3#%F0%9F%90%AC67%40oneclickvpnkeys
